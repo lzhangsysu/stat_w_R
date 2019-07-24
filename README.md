@@ -1,2 +1,2 @@
-# python_DS_ML_bootcamp
-Udemy python data science machine learning bootcamp
+# duke_stat_w_R
+Coursera statistics with R specialization
