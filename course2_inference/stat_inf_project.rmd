@@ -1,0 +1,248 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+### About GSS
+The General Social Survey (GSS) is a sociological survey that collects information and keeps a historical record of the concerns, experiences, attitudes, and practices of residents of the United States. It is one of the most influential studies in the social sciences.
+
+Since 1972, the GSS has been monitoring societal change and studying the growing complexity of American society, in order to monitor and explain trends and constants in attitudes, behaviors, and attributes; to examine the structure and functioning of society in general as well as the role played by relevant subgroups; to compare the United States to other societies in order to place American society in comparative perspective and develop cross-national models of human society; and to make high-quality data easily accessible to scholars, students, policy makers, and others, with minimal cost and waiting. The GSS contains a standard core of demographic, behavioral, and attitudinal questions, plus topics of special interest. Among the topics covered are civil liberties, crime and violence, intergroup tolerance, morality, national spending priorities, psychological well-being, social mobility, and stress and traumatic events.
+
+### Methodology
+(from GSS wikipedia website)
+
+The target population of the GSS is adults (18+) living in households in the United States. The GSS sample is drawn using an area probability design that randomly selects respondents in households across the United States to take part in the survey. Respondents that become part of the GSS sample are from a mix of urban, suburban, and rural geographic areas. Participation in the study is strictly voluntary.
+
+The survey is conducted face-to-face with an in-person interview by NORC at the University of Chicago. The survey was conducted every year from 1972 to 1994 (except in 1979, 1981, and 1992). Since 1994, it has been conducted every other year. The survey takes about 90 minutes to administer. As of 2014, 30 national samples with 59,599 respondents and 5,900+ variables have been collected.
+
+### Generalizability, Casuality and Bias
+Generalizability: Random sampling is conducted throughout the GSS survey, with careful design to make sure samples are drawn to be representative of US adult population as a whole. Therefore, the data is generalizable to the US population.
+
+Casuality: The GSS is a observational study, not experimental. Therefore any relationship between variables from the GSS can only indicate association but not causation.
+
+Bias:
+The GSS methodology ensures bias is minimized, but there are some concerns that might introduce bias:
+1) The GSS is strictly voluntary, therefore voluntary response bias is possible.
+2) Since the GSS survey is conducted by in-person survey lasts approximately one hour, there is possibility that certain groups of people are underrepresented in the survey because they are more likely to choose to not respond to the survey (for example, people with 9-5 jobs).
+
+* * *
+
+## Part 2: Research question
+My research question is: Is there correlation between number of children and education level? If so, is there any upward or downward trend over the years for number of children on the basis of education level?
+
+Based on this question, the analysis will be done using following variables:
+
+1) year: GSS year for specific respondent;
+
+2) degree: respondent highest degree;
+
+3) childs: number of children.
+
+I am interested in this question because the number of children reflects birth rate of the population, and birth rate has huge impacts on many social and economical issues including healthcare, education, labor force and employment, among others. In many European and Asian countries, the declining birthrate resulted in aging population and increased burden on healthcare system. I'm also interested in whether education level affects birth rate. It is believed that people with higher level of education tend to have less children, meanwhile put more resource on education and other support of their children. Therefore, a difference of number of children between people with different education level is expected. Whether there will also be a difference on number of children over the years is unclear though.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+Here I start by creating a new dataframe "df1", containing the 3 variables from GSS needed for this analysis: year, degree and childs.
+
+```{r}
+df1 <- select(gss, year, degree, childs) %>%
+  filter(!is.na(degree), !is.na(childs))
+summary(df1)
+```
+Based on the summary, there are 5 different levels of degree: Lt High School, High School, Junior College, Bachelor and Graduate. The number of children each respondent has range from a minimum of 0 to a maximum of 8, with average of 1.937 and median of 2.
+
+Let's create a new variable "edu_level" to categorize degree into 2 levels: "No College" and "Some College or Higher", then calculate the average number of children each year based on this new variable "edu_level", store the year-over-year average number of children (based on edu_level) into another dataframe "df2", and plot it.
+```{r}
+df1 <- df1 %>%
+  mutate(edu_level = ifelse(degree == "Lt High School"|degree == "High School", "No College", "Some College or Higher"))
+  
+df2 <- df1 %>%
+  group_by(year, edu_level) %>%
+  summarise(avg_child = mean(childs), coun = n())
+
+ggplot(data = df2, aes(x = year, y = avg_child, color = edu_level)) +
+  geom_line() + geom_point() +
+  labs(title="Number of Children over the Year Based on Education Level", x="Year",y="Average Number of Children")
+```
+
+From the plot, it looks like ovaral respondents with some college or higher degree tend to have fewer children compared to respondents with no college degree, regardless of the year. If we look at the trend over the years, respondents with no college degree seem to show a downward trend over the years for the average number of children. The trend for respondents with some college or higher degree, on the other hand, is less obvious.
+
+* * *
+
+## Part 4: Inference
+### 1) Is there really a difference on number of children between people with college or higher degree and people without college degree?
+
+In the previous plot, we see that there's a clear difference between average number of children for respondents with some college or higher degree, versus respondents with no college degree. To assess whether such difference is statistical significant, I would like to conduct inferential analysis on this question: Is the average number of children the same for people with some college or higher degree, compared to these with no college degree?
+
+H0: There's no difference on number of children between people with some college or higher degree and people with no college degree. (mu_No College =  mu_Some College or Higher)
+
+HA: There's some difference on number of children between people with some college or higher degree and people with no college degree. (mu_No College != mu_Some College or Higher)
+
+Before inferential analysis, we need to validate the conditions of independence and normality are met:
+
+```{r}
+df1 %>%
+  group_by(edu_level) %>%
+  summarize(count=n())
+```
+1) Independence: Respondents are selected randomly, and the total number of respondents is definitely less than 10% of whole US adult population, therefore we should assume each data is independent.
+
+2) Sample size/skewness: as we see from the summary above, the sample size in each education level category is way larger than 30.
+
+Therefore both conditions are met, and we can assume the sampling distribution is nearly normal. Hypothesis testing is performed:
+
+```{r}
+# Hypothesis Testing:
+inference(y = childs, x = edu_level, data = df1, statistic = "mean", type = "ht", null = 0, 
+          alternative = "twosided", method = "theoretical")
+```
+
+The hypothesis test result gives a p-value close to zero. Therefore we reject the null hypothesis.
+
+Next we calculate a 95% confidence interval to evaluate the difference between the two averages:
+
+```{r}
+# Confidence Interval:
+inference(y = childs, x = edu_level, data = df1, statistic = "mean", type = "ci", conf_level = 0.95, 
+          alternative = "twosided", method = "theoretical")
+```
+
+The 95% confidence interval (No College - Some College or Higher): (0.5652 , 0.6247). It does not contain zero, hence confirms that with 95% confidence level there is a difference on number of children between people with college degree or higher and people without college degree.
+
+
+### 2) Is the average number of children different from 1980 to 2000 for people without college degree?
+In the previous plot, we see that there is a downward trend over the years for the average number of children. The trend seems to be more obvious for people with no college degree. Here we want to see whether the average number of children is indeed different from 1980 to 2000 for people with no college degree.
+
+H0: There's no difference on number of children between 1980 and 2000 for people with no college degree. (mu_1980 =  mu_2000)
+
+HA: There's some difference on number of children between 1980 and 2000 for people with no college degree. (mu_1980 !=  mu_2000)
+
+Before inferential analysis, we need to confirm the conditions of normality are met:
+
+```{r}
+df_nocollege = df1 %>%
+  filter(edu_level == "No College") %>%
+  filter(year == c(1980, 2000))
+
+df_nocollege %>%
+  group_by(year) %>%
+  summarize(count=n())
+```
+1) Independence: Respondents are selected randomly, and the total number of respondents is definitely less than 10% of whole US adult population, therefore we should assume each data is independent.
+
+2) Sample size/skewness: as we see from the summary above, the sample size in each year is larger than 30.
+
+Therefore, both conditions are met and we can assume the sampling distribution is nearly normal.
+
+```{r}
+# Hypothesis Test:
+inference(y = childs, x = year, data = df_nocollege, statistic = "mean", type = "ht", null = 0, 
+          alternative = "twosided", method = "theoretical")
+```
+
+The hypothesis test gives a p-value of 0.0043. Therefore we reject the null hypothesis.
+
+Next we calculate a 95% confidence interval to evaluate if there's a difference between the two averages:
+
+```{r}
+# Confidence Interval:
+inference(y = childs, x = year, data = df_nocollege, statistic = "mean", type = "ci", conf_level = 0.95,
+          method = "theoretical")
+```
+
+The 95% confidence interval (1980 - 2000): (0.0876 , 0.4687). It does not contain zero, hence confirms that there is a difference on number of children between people with college degree or higher and people without college degree.
+
+### 3) Does the average number of children decrease from 1980 to 2000 for people with some college or higher degree?
+Inferential study shows there is a difference but the for people with no college degree. Here we want to see whether the average number of children is indeed difference from 1980 to 2000 for people with no college degree.
+
+H0: There's no difference on number of children between 1980 and 2000 for people with some college or higher degree.
+(mu_1980 =  mu_2000)
+
+HA: There's some difference on number of children between 1980 and 2000 for people with some college or higher degree.
+(mu_1980 !=  mu_2000)
+
+Before inferential analysis, we need to validate the conditions of independence and normality are met:
+
+```{r}
+df_college = df1 %>%
+  filter(edu_level == "Some College or Higher") %>%
+  filter(year == c(1980, 2000))
+
+df_college %>%
+  group_by(year) %>%
+  summarize(count=n())
+```
+
+1) Independence: Respondents are selected randomly, and the total number of respondents is definitely less than 10% of whole US adult population, therefore we should assume each data is independent.
+
+2) Sample size/skewness: as we see from the summary above, the sample size in each year is larger than 30.
+
+Therefore, both conditions are met and we can assume the sampling distribution is nearly normal.
+
+```{r}
+# Hypothesis Test:
+inference(y = childs, x = year, data = df_college, statistic = "mean", type = "ht", null = 0, 
+          alternative = "twosided", method = "theoretical")
+```
+
+The hypothesis test gives a p-value of 0.1109. Therefore we fail to reject the null hypothesis.
+
+Next we calculate a 95% confidence interval to evaluate if there's a difference between the two averages:
+```{r}
+# Confidence Interval:
+inference(y = childs, x = year, data = df_college, statistic = "mean", type = "ci", conf_level = 0.95,
+          method = "theoretical")
+```
+
+The 95% confidence interval (1980 - 2000): (0.0876 , 0.4687). It does not contain zero, hence confirms that there is a difference on number of children between people with college degree or higher and people without college degree.
+
+## Conclusion
+
+Here I am interested in relationship between education level and number of children over the years. I did some exploratory analysis by looking at average number of children for people with and without college degree, and I plotted the average number of children for the 2 groups over the years. The plot shows a clear difference between two groups of different education level in terms of average number of children: people with no college degree have higher number of children, on average, compared to people with some college or higher degree. Also, there seems to be an overall downward trend over the years for number of children, but the trend is much more obvious for people with no college degree than people with some college or higher degree.
+
+Therefore, I ran 3 inferencial analysis to answer 3 difference questions:
+
+1) Is the average number of children for people with some college degree the same with people with no college degree or is it different?
+
+2) Is the average number of children for people with no college degree the same from 1980 to 2000 or is it different?
+
+3) Is the average number of children for people with some college degree or higher the same from 1980 to 2000 or is it different?
+
+For each question, I did both hypothesis testing and 95% confidence interval to corroborate the inference results.
+
+For question 1, hypothesis testing gives a p-value near zero, and the 95% confidence interval does not contain zero. Therefore the null hypothesis is rejected.
+
+For question 2, hypothesis testing gives a p-value of 0.0043, and the 95% confidence interval does not contain zero. Therefore the null hypothesis is rejected.
+
+For question 3, hypothesis testing gives a p-value of 0.2219, and the 95% confidence interval contains zero. Therefore the null hypothesis is not rejected.
+
+----------------
+
+
