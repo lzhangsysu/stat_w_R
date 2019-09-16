@@ -1,0 +1,354 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(GGally)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+dim(movies)
+```
+
+* * *
+
+## Part 1: Data
+The data set is comprised of 651 randomly sampled movies produced and released before 2016, with information from Rotten Tomatoes and IMDB. These information are stored across 32 variables, both numerical and categorical.
+
+Generalizability: Random sampling is used to collect the data, therefore the data is generalizable to the whole population of movies produced and released before 2016 in the US.
+
+Casuality: This is a observational data set, not experimental. No random assignment was used. Therefore any relationship between variables from the data set can only indicate association but not causation.
+
+Bias: Potential biases might come from non-voting (or non-rating) behavior of movie viewers, since rating and voting on IMDB and rotten-tomatoes are voluntary.
+
+* * *
+
+## Part 2: Research question
+
+In this study I intend to study whether a movie's audience score, which reflects its popularity, is associated with a number of variables: type of movie, genre, runtime, imdb rating, imdb number of votes, critics rating, critics score, audience rating and major rewards.
+
+I am interested in this question because being able to predict movies' popularity can be extremely helpful for business decision making in entertainment industry and investors.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+### Selecting variables
+
+The movies data set contains 32 variables. Some of the variables are clearly not relavant for making predictions on audience score of movies, such as the URL of the movies, or the names of the leading actors/actresses. I decide to choose following variables as starting point for the regression study:
+
+1. title_type: Type of movie (Documentary, Feature Film, TV Movie)
+2. genre: Genre of movie (Action & Adventure, Comedy, Documentary, Drama, Horror, Mystery & Suspense, Other)
+3. runtime: Runtime of movie (in minutes)
+4. mpaa_rating: MPAA rating of the movie (G, PG, PG-13, R, Unrated)
+5. imdb_rating: Rating on IMDB
+6. imdb_num_votes: Number of votes on IMDB
+7. critics_rating: Categorical variable for critics rating on Rotten Tomatoes (Certified Fresh, Fresh, Rotten)
+8. critics_score: Critics score on Rotten Tomatoes
+9. audience_rating: Categorical variable for audience rating on Rotten Tomatoes (Spilled, Upright)
+10. audience_score: Audience score on Rotten Tomatoes
+11. best_pic_nom: Whether or not the movie was nominated for a best picture Oscar (no, yes)
+12. best_pic_win: Whether or not the movie won a best picture Oscar (no, yes)
+13. best_actor_win: Whether or not one of the main actors in the movie ever won an Oscar (no, yes)
+14. best_actress_win: Whether or not one of the main actresses in the movie ever won an Oscar (no, yes) 
+15. best_dir_win: Whether or not the director of the movie ever won an Oscar (no, yes) 
+16. top200_box: Whether or not the movie is in the Top 200 Box Office list on BoxOfficeMojo (no, yes)
+
+Here I create a new dataframe to contact the above selected variables:
+```{r}
+movie_data <- movies %>%
+  select(title_type, genre, mpaa_rating, critics_rating, audience_rating, best_pic_nom, best_pic_win, best_actor_win,
+         best_actress_win, best_dir_win, top200_box, runtime, imdb_rating, imdb_num_votes, critics_score, audience_score)
+
+str(movie_data)
+
+summary(movie_data)
+```
+
+There's one entry with missing values. I decide to remove the entry.
+```{r}
+movie_data <- na.omit(movie_data)
+```
+
+### Distribution of numerical variables
+
+Then I decide to take a look at distribution of the responsive variable, audience score:
+
+```{r}
+ggplot(movie_data, aes(audience_score, ..density.. )) +
+  geom_histogram(binwidth = 5, color='black', fill='white') +
+  xlab("Audience Score") + ylab("Frequency") + 
+  geom_density(col = "blue", lwd = 0.5) +
+  ggtitle("(Fig 1) Distribution of Audience Score")
+
+summary(movie_data$audience_score)
+
+```
+
+The distribution of audience score is slightly left-skewed, with a median of 65.00 and mean of 62.35.
+
+Next, I would like to view distribution of all numeric variables to be included in the initial model using histograms:
+
+```{r}
+ggplot(movie_data, aes(runtime, ..density.. )) +
+  geom_histogram(binwidth = 5, color='black', fill='white') +
+  xlab("Run Time") + ylab("Frequency") + xlim(50, 220) +
+  geom_density(col = "blue", lwd = 0.5) +
+  ggtitle("(Fig 2A) Runtime Distribution")
+
+ggplot(movie_data, aes(imdb_rating, ..density.. ))+
+  geom_histogram(binwidth = 0.5, color='black', fill='white') +
+  xlab("IMDB Rating") + ylab("Frequency") + 
+  geom_density(col = "blue", lwd = 0.5) +
+  ggtitle("(Fig 2B) IMDB Rating Distribution")
+
+ggplot(movie_data, aes(imdb_num_votes, ..density.. )) +
+  geom_histogram(binwidth = 2000, color='black', fill='white') +
+  xlab("log(Number of Votes)") + ylab("Frequency") + xlim(0,80000) + 
+  geom_density(col = "blue", lwd = 0.5) +
+  ggtitle("(Fig 2C) IMDB Number of Votes Distribution")
+
+ggplot(movie_data, aes(critics_score, ..density..)) +
+  geom_histogram(binwidth = 5, color='black', fill='white') +
+  xlab("Critics Score") + ylab("Frequency") +
+  geom_density(col = "blue", lwd = 0.5) +
+  ggtitle("(Fig 2D) Critics Score Distribution")
+
+```
+
+All 4 numerical variables are broadly distributed, with runtime slightly right skewed, imdb_rating slightly left skewed, imdb_num_votes extremely right skewed and critics_score distribution left skewed and relatively flat compared to other variables.
+
+
+### Distribution of categorical variables
+
+Next, I take a look at distribution of 5 categorial variables with more than two levels using barplot: title_type, genre, mpaa_rating, critics_rating and audience_rating. The other categorical variables: best_pic_nom, best_pic_win, best_actor_win, best_actress_win, best_dir_win and top_200, are binary categorical variables with one level significantly higher than the other, therefore I decide to not plot them. Nevertheless I still include these variables in my initial full model.
+
+```{r}
+ggplot(movie_data, aes(title_type)) + 
+  geom_bar() +
+  xlab("Title Type") + ylab("Counts") +
+  ggtitle("(Fig 3A) Title Type of Movies")
+
+ggplot(movie_data, aes(genre)) + 
+  geom_bar() +
+  xlab("Genre") + ylab("Counts") +
+  theme(axis.text.x = element_text(angle=45, hjust=0.95)) +
+  ggtitle("(Fig 3B) Genre Distribution of Movies")
+
+ggplot(movie_data, aes(mpaa_rating)) + 
+  geom_bar() +
+  xlab("MPAA Rating") + ylab("Counts") +
+  ggtitle("(Fig 3C) MPAA Rating Distribution of Movies")
+
+ggplot(movie_data, aes(critics_rating)) + 
+  geom_bar() +
+  xlab("Critics Rating") + ylab("Counts") +
+  ggtitle("(Fig 3D) Criticis Rating Distribution of Movies")
+
+ggplot(movie_data, aes(audience_rating)) + 
+  geom_bar() +
+  xlab("Audience Rating") + ylab("Counts") +
+  ggtitle("(Fig 3E) Audience Rating Distribution of Movies")
+
+```
+
+### Correlation between numerical variables
+
+Next, I look at correlation between numeric variables using pairplot: 
+
+```{r}
+ggpairs(movie_data, columns = 12:16) +
+  ggtitle("(Fig 4) Pairplot of numerical variables")
+```
+
+From the pair plot, it seems like audience_score is strongly correlated with imdb_rating and critics_score. However, imdb_rating and critics_score are also highly correlated, with correlation of 0.765. Therefore, we need to be causious when selection for prediction models, since the two variables might be redundant due to colinearity.
+
+* * *
+
+## Part 4: Modeling
+
+### Method selection
+
+I decide fit the model with linear regression. To pick the set of variables to be included in the model, I decide to use backward selection based on p-value. Compared to forward selection, backward selection fits less models. Similarly, even though using R-squared generates more reliable model, using p-value requires less models to be fitted. 
+
+There are other criteria to be used such as Cp, AIC and BIC, and there are convenient functions and packages for model selection. However here I will do each step manually by looking at p-value for different variables.
+
+### Backward selection
+
+I started with a model using all variables: m_full
+
+```{r}
+m_full <- lm(audience_score ~ ., data = movie_data)
+
+summary(m_full)
+```
+
+Based on the full model, the variable with the highest p-value is best_actor, so the I decide to drop this variable and fit a new model m_minus_one:
+
+```{r}
+m_minus_one <- lm(audience_score ~ title_type + genre + runtime + mpaa_rating + imdb_rating + imdb_num_votes + 
+                    critics_rating + critics_score + audience_rating + best_pic_nom + best_pic_win + best_actress_win + best_dir_win + top200_box, data = movie_data)
+
+summary(m_minus_one)
+```
+
+The variable genreOther has the highest p-value of 0.9371, however genre is a categorical variable, with genreMystery & Suspense has a p-value of 0.0334, so it cannot be dropped at this point. Similarly, mpaa_rating cannot be dropped at this point. The next variable to be dropped at this point should be best_dir_win with p-value of 0.7983.
+
+```{r}
+m_minus_two <- lm(audience_score ~ title_type + genre + runtime + mpaa_rating + imdb_rating + imdb_num_votes + 
+                    critics_rating + critics_score + audience_rating + best_pic_nom + best_pic_win + best_actress_win + top200_box, data = movie_data)
+
+summary(m_minus_two)
+```
+
+The next variable to be dropped is top200_box, with a p-value of 0.7295.
+
+```{r}
+m_minus_three <- lm(audience_score ~ title_type + genre + runtime + mpaa_rating + imdb_rating + imdb_num_votes + 
+                      critics_rating + critics_score + audience_rating + best_pic_nom + best_pic_win + best_actress_win, data = movie_data)
+
+summary(m_minus_three)
+```
+
+The next variable to be dropped is critics_score, with p-value of 0.7102. Note that critics_score is highly correlated with imdb_rating, therefore it is not surprising that when both variables are included in the model, one of the two becomes redundant and has large p-value.
+
+The step of drop one variables continues, each time drop the variable with highest p-value:
+
+```{r}
+m_minus_four <- lm(audience_score ~ title_type + genre + runtime + mpaa_rating + imdb_rating + imdb_num_votes + 
+                     critics_rating + audience_rating + best_pic_nom + best_pic_win + best_actress_win, data = movie_data)
+
+summary(m_minus_four)
+
+m_minus_five <- lm(audience_score ~ title_type + genre + runtime + imdb_rating + imdb_num_votes + critics_rating + 
+                     audience_rating + best_pic_nom + best_pic_win + best_actress_win, data = movie_data)
+
+summary(m_minus_five)
+
+m_minus_six <- lm(audience_score ~ title_type + genre + runtime + imdb_rating + imdb_num_votes + critics_rating + 
+                    audience_rating + best_pic_nom + best_actress_win, data = movie_data)
+
+summary(m_minus_six)
+
+m_minus_seven <- lm(audience_score ~ title_type + genre + runtime + imdb_rating + critics_rating + audience_rating + 
+                      best_pic_nom + best_actress_win, data = movie_data)
+
+summary(m_minus_seven)
+
+m_minus_eight <- lm(audience_score ~ genre + runtime + imdb_rating + critics_rating + audience_rating + best_pic_nom + 
+                      best_actress_win, data = movie_data)
+
+summary(m_minus_eight)
+
+m_minus_nine <- lm(audience_score ~ genre + runtime + imdb_rating + audience_rating + best_pic_nom + best_actress_win, data = movie_data)
+
+summary(m_minus_nine)
+
+m_minus_ten <- lm(audience_score ~ genre + runtime + imdb_rating + audience_rating + best_pic_nom, data = movie_data)
+
+summary(m_minus_ten)
+
+m_minus_eleven <- lm(audience_score ~ genre + imdb_rating + audience_rating + best_pic_nom, data = movie_data)
+
+summary(m_minus_eleven)
+
+m_minus_twelve <- lm(audience_score ~ genre + imdb_rating + audience_rating, data = movie_data)
+
+summary(m_minus_twelve)
+```
+
+At this point, all remaining variables in the model (genre, imdb_rating, audience_rating) are considered significant. Therefore this is our final model.
+
+### Interpretation of the model
+
+- Intercept (-12.5605): The predicted audience score for a movie with imdb_rating, audience_rating and genre at level zero. A negative audience score does not make practical sense here.
+
+- imdb_rating (9.8028): All else hold constant, for every one point increase in imdb_rating, this model predicts a 9.8028 increase in audience_score.
+
+- audience_ratingUpright (20.3180): All else hold constant, this model predicts that with audience_rating "Upright" on average has 20.3246 higher in audience score than movies with audience_rating "Spilled".
+
+- genre: There are 11 different genres. The model chooses "Action & Adventure" as reference level. The coefficient for each genre therefore indicates all else hold constant, the model predicts a movie with specific genre has higher or lower audience score compared to a movie with genre "Action and Adventure". For example, genreAnimation has a coefficient of 3.6228, meaning the model predicts all else hold constant, an animation movie on average's audience score is 3.6228 higher than an action & adventure movie.
+
+- R-Squared(0.8872): 88.72% of the variablity in audience score can be explained by the model.
+
+### Diagnostics of the model
+
+- Linear relationship:
+
+Among the 3 variables in the final model, genre and audience_rating are categorical variables, while imdb_rating is numerical. So I check the linear relationship between numerical predictors and residuals:
+
+```{r}
+plot(m_minus_twelve$residuals ~ movie_data$imdb_rating, main="(Fig 5) Residuals vs imdb_rating")
+abline(h=0, lty = "dashed")
+```
+
+There's clearly a linear relationship between imdb_rating and audience_score, so the linear relationship condition is met.
+
+- Nearly normal residuals with mean 0:
+```{r}
+hist(m_minus_twelve$residuals, prob=TRUE, main="(Fig 6A) Histogram of residuals")
+lines(density(m_minus_twelve$residuals), lwd=0.25)
+qqnorm(m_minus_twelve$residuals, main="(Fig 6B) Normal probability plot of residuals")
+qqline(m_minus_twelve$residuals, col="red", lty="dashed")
+```
+
+There are some skewness, but overall the residuals are nearly normal distributed centered at 0, so this condition is also met.
+
+- Constant variability of residuals
+
+```{r}
+plot(m_minus_twelve$residuals~m_minus_twelve$fitted, main="(Fig 7A) Residuals vs fitted")
+abline(h=0, lty="dashed")
+
+plot(abs(m_minus_twelve$residuals)~m_minus_twelve$fitted, main="(Fig 7B) Residuals vs fitted")
+```
+
+There are some clustering but overall residuals are equally variable for low and high values of the predicted response variable. The absolute value of residuals plot does not show unusual observations. Hence the condition of constant variability of residuals is met.
+
+- Independent residuals
+
+```{r}
+plot(m_minus_twelve$residuals, main="(Fig 8) Independence Check")
+abline(h=0, lty="dashed")
+```
+
+The plot shows randomly scattered residuals centered around zero, therefore the condition of indepence is met.
+
+* * *
+
+## Part 5: Prediction
+
+Here I selected a 2016 movie "The Jungle Book", and use the linear regression model I selected to predict its audience score based on variables included in the model: imdb_rating, audience_rating and genre.
+
+```{r}
+new_movie <- data.frame(title ="The Jungle Book", imdb_rating = 7.8, genre = "Action & Adventure", audience_rating = "Upright")
+
+predict(m_minus_twelve, new_movie, interval = "confidence")
+```
+
+The prediction result indicates that with 95% confidence, a movie with imbd_rating of 7.8, genre of "Action & Adventure" and an audience_rating of "Upright", on average, has an audience_score ranging between 82.266 and 86.182. Note that the actual audience_score of "The Jungle Book" is 86, which falls into this range.
+
+* * *
+
+## Part 6: Conclusion
+By using backward selection with p-value, I developed a linear regression model that takes a movie's genre, imdb_score and audience_rating as explanatory variables to predict a movie’s audience score, which is a measurement of movie popularity. This model is of great use for entertainment industry to gain insight into the underline driving force for movie popularity and revenue.
+
+One concern is that this model does not take into account of audience's changing taste of movies over time: the model treats movies produced at different years equally, but it's quite likely that theatre-goers today have different preference on movies than those 10 years ago. Therefore, a more sophisticated model should add time-series into the prediction, and putting more weight on more recent movies.
+
