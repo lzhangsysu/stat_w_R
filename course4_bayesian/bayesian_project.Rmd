@@ -1,0 +1,320 @@
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(BAS)
+library(tidyr)
+library(GGally)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+dim(movies)
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The data set is comprised of 651 randomly sampled movies produced and released before 2016, with information from Rotten Tomatoes and IMDB. These information are stored across 32 variables, both numerical and categorical.
+
+- Generalizability: Random sampling is used to collect the data, therefore the data is generalizable to the whole population of movies produced and released before 2016 in the US.
+
+- Casuality: This is a observational data set, not experimental. No random assignment was used. Therefore any relationship between variables from the data set can only indicate association but not causation.
+
+- Bias: Potential biases might come from non-voting (or non-rating) behavior of movie viewers, since rating and voting on IMDB and rotten-tomatoes are voluntary.
+
+* * *
+
+## Part 2: Data manipulation
+
+### Create new variables
+
+In this project, aside from variables already contained in the original data set, we need to create several new variables that are derived from the original variables:
+
+1) feature_film with levels yes (movies that are feature films) and no
+2) drama with levels yes (movies that are dramas) and no
+3) mpaa_rating_R with levels yes (movies that are R rated) and no
+4) oscar_season with levels yes (if movie is released in November, October, or December) and no
+5) summer_season with levels yes (if movie is released in May, June, July, or August) and no
+
+Here I created the variables above, then created a new dataframe "movies1" to store data for all the variables needed for the project.
+
+```{r}
+movies <- movies %>%
+    mutate(
+    feature_film = ifelse(title_type == "Feature Film", "yes", "no"),
+    drama = ifelse(genre == "Drama", "yes", "no"),
+    mpaa_rating_R = ifelse(mpaa_rating == "R", "yes", "no"),
+    oscar_season = ifelse(thtr_rel_month >= 10 & thtr_rel_month <= 12, "yes", "no"),
+    summer_season = ifelse(thtr_rel_month >= 5 & thtr_rel_month <= 8, "yes", "no")
+  )
+
+movies1 <- movies %>%
+  select(audience_score, feature_film, drama, runtime, mpaa_rating_R, 
+         thtr_rel_year, oscar_season, summer_season, imdb_rating, 
+         imdb_num_votes, critics_score, best_pic_nom, best_pic_win, 
+         best_actor_win, best_actress_win, best_dir_win, top200_box)
+
+movies1$feature_film<-as.factor(movies$feature_film)
+movies1$drama<-as.factor(movies$drama)
+movies1$mpaa_rating_R<-as.factor(movies$mpaa_rating_R)
+movies1$oscar_season<-as.factor(movies$oscar_season)
+movies1$summer_season<-as.factor(movies$summer_season)
+
+dim(movies1)
+```
+
+By looking at the summary of the dataframe, I find there's one NA value. I updated the movies1 dataframe by removing the entry containing NA.
+
+```{r}
+summary(movies1)
+
+movies1 <- na.omit(movies1)
+```
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+### Distribution of response variable
+
+First, I take a look at the distribution of the response variable, audience_score:
+```{r}
+ggplot(movies1, aes(audience_score, ..density.. )) +
+  geom_histogram(binwidth = 5, color='black', fill='white') +
+  xlab("Audience Score") + ylab("Frequency") + 
+  geom_density(col = "blue", lwd = 0.5) +
+  ggtitle("Distribution of Audience Score")
+
+summary(movies1$audience_score)
+```
+
+The distribution of audience score is slightly left-skewed, with a median of 65.00 and mean of 62.35.
+
+### Response variable distribution based on categorical variables
+
+Out of 16 explanatory variables, 11 of them are binary categorical variables with "yes" and "no" levels. I decide to look at whether distribution of audience_score shows is different between the two levels for these categorical variables.
+
+```{r, fig.width=9}
+movies_cat1 <- movies1 %>% 
+  select(audience_score, feature_film, drama, mpaa_rating_R, oscar_season, summer_season)
+
+gather_cat1 <- gather(movies_cat1,key=varname,value=val,-audience_score)
+
+ggplot(data=gather_cat1, aes(x=val,y=audience_score,fill=val)) + 
+  geom_boxplot() +
+  facet_grid(~varname) +
+  xlab("Categorical Variables") + ylab("Audience Score") +
+  labs(title="Audience Score by Variable",fill="Values") +
+  ggtitle("Distribution of Audience Score (1)")
+
+movies_cat2 <- movies1 %>% 
+  select(audience_score, best_pic_nom, best_pic_win, best_actor_win, best_actress_win, best_dir_win, top200_box)
+
+gather_cat2 <- gather(movies_cat2,key=varname,value=val,-audience_score)
+
+ggplot(data=gather_cat2, aes(x=val, y=audience_score,fill=val)) + 
+  geom_boxplot() + 
+  facet_grid(~varname) +
+  xlab("Categorical Variables") + ylab("Audience Score") +
+  labs(title="Audience Score by Variable",fill="Values") +
+  ggtitle("Distribution of Audience Score (2)")
+
+```
+
+Based on the box plots above, it is obvious that some categorical variables show very significant difference of audience score for "yes" vs "no" levels, such as whether the movie is a feature film or whether the movie was nominated/won a best picture in Oscar award. Indeed, the 25% to 75% quantile of audience_score for best_pic_nom and best_pic_win does not even overlap, indicatng quite pronounced difference between "yes" and "no" levels. Other categorical variables do not seem to have such significant difference between 2 levels in terms of audience score. However, whether the difference (or lack of) is statistical significant and whether it's important for predicting audience score is unknown at this point.
+
+### Numerical variable distribution and correlation
+
+Next, I take a look at the distribution of all numerical variables as well as their correlation using pairplots.
+
+```{r, fig.width=9.5, fig.height=7.8}
+movies_num <- movies1 %>% 
+  select(audience_score, runtime, thtr_rel_year, imdb_rating, imdb_num_votes, critics_score)
+
+ggpairs(movies_num) +
+  ggtitle("Pairplot of numerical variables")
+```
+
+From the pair plot, thtr_rel_year, imdb_rating and critics_score are all slightly left-skewed, runtime is slightly right-skewed, and imdb_num_vote is extremely right-skewed.
+
+In terms of correlation, audience_score is strongly correlated with imdb_rating and critics_score, with correlation of 0.865 and 0.704 respectively. However, imdb_rating and critics_score are also highly correlated, with correlation of 0.765. Therefore, we need to be careful during model selection, since the two variables might be redundant due to colinearity.
+
+* * *
+
+## Part 4: Modeling
+
+### Full Model
+
+First I construct a model with all explanatory variables included:
+
+```{r}
+movies_full <- lm(audience_score ~ . -audience_score, data=movies1)
+
+summary(movies_full)
+
+BIC(movies_full)
+```
+
+Here we see the R-squared is 0.763, and BIC is 4934. The most significant variable is imdb_rating, followed by critics_score.
+
+### Bayesian model averaging
+
+To select a Bayesian regression model to predict audience_score, we can start with a model containing all explanatory variables, then use the stepAIC function in R to remove variables in a stepwise fashion until AIC score no longer decreases.
+
+Choosing one single model, however, sometimes risks ignoring the uncertainty involved in picking variables for constructing the model, and it is likely several models not selected perform equally well. To overcome this problem, an alternativel approach is Bayesian model averaging (BMA), which takes posterior probability of variables to be included in model, and averages all models by their probability. Therefore, here I decide to use BMA for model selection using linear regression.
+
+I choose BIC for the prior distribution of regression coefficients, which is more conservative than AIC. I choose uniform distribution as the prior distribution of all possible models.
+
+```{r, fig.height = 6, fig.width = 8}
+movies_bas <- bas.lm(audience_score ~ . -audience_score, prior = "BIC", modelprior = uniform(), data = movies1)
+
+round(summary(movies_bas),4)
+
+img = image(movies_bas, rotate = FALSE)
+```
+
+Under the BIC prior we see that the top 5 models all include imdb_rating and critics_score, the two numerical variables that are shown to be strongly correlated with audience_score. In addition, runtime, best_actor_win and mpaa_rating are included in some of the top 5 models. Also noting that the Bayesian factor (BF) of the difference in posterior probabilities for top 2 models is 0.997 and "not worth a bare mention". The evidence is stronger for the next 3 models and beyond.
+
+The most and second-most probable model have posterior probability of 0.1297 and 0.1293, respectively, which are both very large numbers considering the total number of probable models.
+
+### Model likelihood vs model complexity
+
+The most and second-most likely models contain 3 and 2 variables respectively, indicating that small number of variables is sufficient. 
+
+```{r}
+plot(movies_bas, which=3)
+```
+
+Indeed, from the plot above, we see that models with 2 and 3 variables achieve highest marginal likelihood, whereas further increasing model complexity resulted in lower likelihood.
+
+### Posterior model inclusion probability and coefficients
+
+Overall, the posterior model inclusion probability for each variable shows that the posterior probability that imdb_rating is included in the model is 1, followed by critics_score: 0.889; runtime: 0.470, and mpaa_rating: 0.200. 
+This can be easily visualized by following plot:
+
+```{r}
+plot(movies_bas, which=4, sub.caption = "")
+```
+
+The coefficients of variables are listed below:
+
+```{r}
+coef_movies <- coef(movies_bas)
+
+```
+
+We can conclude from the model coefficients that:
+
+(1) imbd_rating: for every 1 point increase in imdb_rating, we expect an increase of 1.5 in audience_score;
+(2) critics_score: for every 1 point increase in critics_score, we expect an increase of 0.063 in audience_score;
+(3) runtime: for every minute of additional run_time we expect audience score to decrease by 0.026.
+(4) mpaa_rating: If the movie is rated R then we expect a 0.304 decrease in the audience score.
+(5) best_actor_win: If the movie won Oscar best actor then we expect a 0.288 decrease in the audience score.
+
+We can also look at the 95% credibale intervals for coefficients:
+
+```{r}
+round(confint(coef_movies),3)
+```
+
+Below I plot the distribution for the 4 coefficients with highest posterier model inclusion probability: imdb_rating, critics_score, runtime and mpaa_rating:
+
+```{r}
+par(mfrow = c(2,2))
+plot(coef_movies, subset=c(9,11,4,5), ask=FALSE)
+```
+
+From the plot, it is obvious that the distribution of coefficients for imbd_rating and critics_score have extremely low probability at zero. The other two variables have higher probability at zero.
+
+### Model diagnostics
+Similar to frequentist approach, Bayesian regression assumes the errors are normally distributed with a constant variance. Here we check whether such conditions are met.
+
+```{r}
+m_bma <- data.frame(obs = movies1$audience_score, fit = fitted(movies_bas, estimator = "BMA"))
+  
+m_bma <- m_bma %>%
+  mutate(resid = obs - fit)
+```
+
+- Nearly normal residuals with mean 0:
+
+```{r}
+hist(m_bma$resid, prob=TRUE, main="Histogram of residuals", breaks = 20)
+lines(density(m_bma$resid), lwd=0.1)
+
+qqnorm(m_bma$resid, main="Normal probability plot of residuals")
+qqline(m_bma$resid, col="red", lty="dashed")
+```
+
+There are some skewness, but overall the residuals are nearly normal distributed centered at 0, so this condition is met.
+
+- Constant variability of residuals
+
+```{r}
+plot(movies_bas, which=1)
+
+plot(abs(m_bma$resid)~m_bma$fit, main="Residuals vs fitted")
+```
+
+The residuals are not entirely constantly distributed, with residuals on lower audience score skews towards positive, indicating the model tends to under-estimate the audience score for movies with low audience scores.
+
+Also note that there are 3 outliers: row 126, 216 and 251.
+
+- Independent residuals
+
+```{r}
+plot(m_bma$resid, main="Independence Check")
+abline(h=0, lty="dashed")
+```
+
+The plot shows randomly scattered residuals centered around zero, therefore the condition of indepence is met.
+
+* * *
+
+## Part 5: Prediction
+
+Here I want to test the model by looking at the movie: "Mancherster by the Sea":
+
+Rotten Tomatoes: https://www.rottentomatoes.com/m/manchester_by_the_sea
+
+IMDB: https://www.imdb.com/title/tt4034228/
+
+Box Office Mojo: https://www.boxofficemojo.com/movies/?id=manchesterbythesea.htm
+
+Best Actor Win: Cassey Affleck
+
+Best Picture: Nominated but did not win.
+
+I create a new data frame "MBS" to store all the data, and use BMA to make predictions:
+
+```{r}
+MBS <- data.frame(feature_film="yes", drama="yes", runtime=135, mpaa_rating_R="yes", thtr_rel_year=2016, 
+                  oscar_season="yes", summer_season="no", imdb_rating=7.8, imdb_num_votes=219956, critics_score=96,
+                  best_pic_nom="yes", best_pic_win="no", best_actor_win="yes", best_actress_win="no", best_dir_win="no", 
+                  top200_box="no")
+
+MBS_pred <- predict(movies_bas, newdata = MBS, estimator="BMA", se.fit = TRUE)
+
+confint(MBS_pred, parm="pred")
+```
+
+The BMA model predicts an audience_score of 84, with 95% credible interval of 64 - 103. The actual audience score is 77, which is contained within the 95% credible interval. We can conclude that the model performs well on this test case.
+
+* * *
+
+## Part 6: Conclusion
+Bayesian model average is powerful in terms of being able to include not only variables but also their posterior probabilities in the model. Overall the model performs well on the test case I chose. However one test case does not say too much about the model performance. The model can be more vigorously tested and optimized using cross-validation.
+
+From the model diagnostics it is obvious that the model does not perform well at the low audience_score region. It would be interesting to see what adjustments need to be made to make the model perform better on that region. In addition, almost all top-ranked models contain both imdb_rating and critics_score, which I find very curious: the two variables are highly correlated, and a non-Bayesian (aka frequentist) approach will certainly remove one of the two variables. I'm not sure why exactly the Bayesian approach does not seem to grasp the correlation. It is likely correlation term should be added as a new variable into the model. 
+
+
