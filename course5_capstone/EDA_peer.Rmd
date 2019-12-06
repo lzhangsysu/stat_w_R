@@ -1,0 +1,323 @@
+---
+title: "Peer Assessment I"
+output:
+  html_document: 
+    pandoc_args: [
+      "--number-sections",
+    ]
+---
+
+
+First, let us load the data and necessary packages:
+
+```{r load, message = FALSE}
+load("ames_train.Rdata")
+View(ames_train)
+library(MASS)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(BAS)
+```
+
+#
+Make a labeled histogram (with 30 bins) of the ages of the houses in the data set, and describe the distribution.
+
+
+```{r Q1}
+# type your code for Question 1 here, and Knit
+ames_train$age <- 2010 - ames_train$Year.Built
+
+summary(ames_train$age)
+
+ggplot(ames_train, aes(x = age)) + 
+  geom_histogram(bins = 30, color = 'black', fill = 'white') +
+  xlab("Age of house (year)") + ylab("Quantity") + ggtitle("House age distribution")
+```
+
+
+* * *
+
+- From the plot above, the distribution of house age is rightly skewed, with a mean of 37.8 and a median of 35.0. The distribution is multimodal.
+
+
+* * *
+
+
+#
+The mantra in real estate is "Location, Location, Location!" Make a graphical display that relates a home price to its neighborhood in Ames, Iowa. Which summary statistics are most appropriate to use for determining the most expensive, least expensive, and most heterogeneous (having the most variation in housing price) neighborhoods? Report which neighborhoods these are based on the summary statistics of your choice. Report the value of your chosen summary statistics for these neighborhoods.
+
+
+```{r Q2}
+# type your code for Question 2 here, and Knit
+ggplot(ames_train, aes(x=reorder(Neighborhood, price, median), y = price/1000, fill = Neighborhood)) +
+  geom_boxplot() + 
+  coord_flip() + 
+  xlab("Neighborhood") + ylab("Housing price (k)") + ggtitle("Housing price distribution by neighborhood")
+
+# type your code for Question 3 here, and Knit
+ames_train_neighbor <- ames_train %>% 
+  select(Neighborhood, price) %>% 
+  group_by(Neighborhood) %>% 
+  summarise(mean = mean(price, na.rm=TRUE), median = median(price, na.rm=TRUE), std = sd(price, na.rm=TRUE))
+
+# sort and display neighborhood housing price based on median or std
+print(arrange(ames_train_neighbor, median))
+
+print(arrange(ames_train_neighbor, desc(median)))
+
+print(arrange(ames_train_neighbor, desc(std)))
+```
+
+
+* * *
+
+- Mean and median can both be used as summary statistics to describe the average price for each neighborhood, but median is less impacted by outliers. The boxplot shows housing price distribution for most neighborhood contains outliers, therefore median is chosen here as the summary statistics to find out about the most expensive and least expensive neighborhoods. As for most heterogenous neighborhood, standard deviation (std) is the best summary statistics. Based on the plot and summary statistics, we can conclude that:
+
+the most expensive neighborhood: StoneBr (median: 340691.5);
+
+the lest expensive neighborhood: MeadowV (median: 85750.0);
+
+the most expensive neighborhood: StoneBr (std: 123459.1);
+
+* * *
+
+# 
+
+Which variable has the largest number of missing values? Explain why it makes sense that there are so many missing values for this variable.
+
+```{r Q3}
+# type your code for Question 3 here, and Knit
+missing_val <- ames_train %>% 
+  summarise_all(funs(sum(is.na(.))))
+
+head(sort(unlist(missing_val[1,]), decreasing = TRUE), 10)
+```
+
+
+* * *
+
+- Pool.QC has the largest number of missing values, with 997 out of 1000 datapoints have NA for this parameter. Pool.QC measures the number of pools each house has, and the vast majority of houses does not have pool at all, hence the large number of missing values in this variable. 
+
+* * *
+
+#
+
+We want to predict the natural log of the home prices. Candidate explanatory variables are lot size in square feet (Lot.Area), slope of property (Land.Slope), original construction date (Year.Built), remodel date (Year.Remod.Add), and the number of bedrooms above grade (Bedroom.AbvGr). Pick a model selection or model averaging method covered in the Specialization, and describe how this method works. Then, use this method to find the best multiple regression model for predicting the natural log of the home prices.
+
+
+```{r Q4, fig.width=9.5, fig.height=7.8}
+# type your code for Question 4 here, and Knit
+ames_q4 <- ames_train %>%
+  select(Lot.Area, Land.Slope, Year.Built, Year.Remod.Add, Bedroom.AbvGr， price) %>%
+  mutate(price = log(price))
+
+names(ames_q4)[6] <- "log_price"
+
+ggpairs(ames_q4) +
+  ggtitle("Pairplot for variables") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+* * *
+
+First I look at correlation between all variables included. As the pairplot shown above, the correlation between price and Year.Built as well as Year.Remod.Add are fairly strong (0.629 and 0.607 respectively), however these two explanatory variables themselves are also correlated (0.617).
+
+The first approach I choose is linear regression using foreward selection and adjusted R-squared. In this approach, one variables that provides largest improvement of adjusted R-squared is added to the model for each step until the adjusted R-squared does not improve any more. Compared to backward selection, forward selection takes more steps, but here we only have 5 variables to test so it's fairly easy. The reason I choose adjusted R-squared is because compared to p-values, adjusted R-squared usually generates more reliable models.
+
+Beginning with a model using one variables, I iterate through all 5 models and find model with Year.Built has the highest adjusted R-squared of 0.3328. Then I add one variable at a time, picking the model with highest adjusted R-squared increase:
+
+```{r}
+mlr_1 <- lm(log_price ~ Year.Built, data = ames_q4)
+mlr_2 <- lm(log_price ~ Year.Built + Year.Remod.Add, data = ames_q4)
+mlr_3 <- lm(log_price ~ Year.Built + Year.Remod.Add + Lot.Area, data = ames_q4)
+mlr_4 <- lm(log_price ~ Year.Built + Year.Remod.Add + Lot.Area + Land.Slope, data = ames_q4)
+mlr_5 <- lm(log_price ~ Year.Built + Year.Remod.Add + Lot.Area + Land.Slope + Bedroom.AbvGr, data = ames_q4)
+
+summary(mlr_1)$adj.r.squared
+summary(mlr_2)$adj.r.squared
+summary(mlr_3)$adj.r.squared
+summary(mlr_4)$adj.r.squared
+summary(mlr_5)$adj.r.squared
+```
+
+Apparently the best model is the model with all 5 variables, as adjusted R-squared keeps increasing with more variables being added to the model. The linear regression model with all 5 parameters has an adjusted R-squared of 0.56.
+
+Alternatively, I also fit the model using Bayesian model averaging (BMA), which takes poesterior probability of variables to be included in model, and averages all models by their probability. Here I choose BIC as prior distribution of regression coefficients, which is more conservative than AIC. I choose uniform distribution as the prior distribution of all possible models.
+
+```{r}
+mbayes <- bas.lm(log_price ~ . -log_price, prior = "BIC", modelprior = uniform(), data = ames_q4)
+round(summary(mbayes),4)
+img = image(mbayes, rotate = FALSE)
+plot(mbayes, which=3, sub.caption = "")
+plot(mbayes, which=4, sub.caption = "")
+```
+
+Using BMA, we get to the similar conclusion that model with all 5 variables is the most likely model. The model without Land.Slope has the second highest marginal likelihood.
+
+Next I perform the model diagnostics for the BMA model:
+```{r}
+m_bma <- data.frame(obs = ames_q4$log_price, fit = fitted(mbayes, estimator = "BMA"))
+
+m_bma <- m_bma %>%
+  mutate(resid = obs - fit)
+```
+
+
+- nearly normal residuals with mean 0:
+```{r}
+hist(m_bma$resid, prob=TRUE, main="Histogram of residuals", breaks = 20)
+lines(density(m_bma$resid), lwd=0.1)
+
+qqnorm(m_bma$resid, main="Normal probability plot of residuals")
+qqline(m_bma$resid, col="red", lty="dashed")
+```
+
+There are some skewness, but overall the residuals are nearly normal distributed centered at 0, so this condition is met.
+
+- Constant variability of residuals
+
+```{r}
+plot(abs(m_bma$resid)~m_bma$fit, main="Residuals vs fitted")
+```
+
+The residuals are mostly constantly distributed.
+
+- Independent residuals
+
+```{r}
+plot(m_bma$resid, main="Independence Check")
+abline(h=0, lty="dashed")
+```
+
+The plot shows randomly scattered residuals centered around zero, therefore the condition of indepence is met.
+
+* * *
+
+#
+
+Which home has the largest squared residual in the previous analysis (Question 4)? Looking at all the variables in the data set, can you explain why this home stands out from the rest (what factors contribute to the high squared residual and why are those factors relevant)?
+
+
+```{r Q5}
+# type your code for Question 5 here, and Knit
+plot(mbayes, which=1)
+```
+
+* * *
+
+- The residuals vs fitted plot shows 3 outliers, row 66, row 428 and row 998. Row 428 is obviously the one with largets squared residual. It can also be obtained by looking at the residual from the fitting:
+
+```{r}
+pred = predict(mlr_5)
+resid = (log(ames_train$price) - pred)^2
+row = which.max(resid)
+row
+
+ames_train[c(row),]
+```
+
+
+By looking at all the variables of this data point, I find this house has some very unique aspects that are rare in the dataset. The price is extremely cheap, sold at only $12789. The second lowest price is more than 3 times as high. The house is 91 years old, both Overall.Cond and Overall.Qual are very poor, which are all rare conditions among all houses, and some of these factors are not included in the model at all. Indeed, most of the houses with lowest prices have very low Overall.Cond and Overall.Qual scores, which are not included in the model. It is quite likely these 2 factors are contributing to its large residuals.
+
+* * *
+
+#
+
+Use the same model selection method you chose in Question 4 to again find the best multiple regression model to predict the natural log of home prices, but this time **replacing Lot.Area with log(Lot.Area)**. Do you arrive at a model including the same set of predictors?
+
+
+```{r Q6}
+# type your code for Question 6 here, and Knit
+ames_q6 <- ames_train %>%
+  select(Lot.Area, Land.Slope, Year.Built, Year.Remod.Add, Bedroom.AbvGr， price) %>%
+  mutate(price = log(price)) %>%
+  mutate(Lot.Area = log(Lot.Area))
+
+names(ames_q6)[6] <- "log_price"
+names(ames_q6)[1] <- "log_lot_area"
+
+View(ames_q6)
+```
+
+First I conducted linear regression using foreward selection with adjusted R-squared:
+
+```{r}
+mlr2_1 <- lm(log_price ~ Year.Built, data = ames_q6)
+mlr2_2 <- lm(log_price ~ Year.Built + log_lot_area, data = ames_q6)
+mlr2_3 <- lm(log_price ~ Year.Built + log_lot_area + Year.Remod.Add, data = ames_q6)
+mlr2_4 <- lm(log_price ~ Year.Built + log_lot_area + Year.Remod.Add + Bedroom.AbvGr, data = ames_q6)
+mlr2_5 <- lm(log_price ~ Year.Built + log_lot_area + Year.Remod.Add + Bedroom.AbvGr + Land.Slope, data = ames_q6)
+
+summary(mlr2_1)$adj.r.squared
+summary(mlr2_2)$adj.r.squared
+summary(mlr2_3)$adj.r.squared
+summary(mlr2_4)$adj.r.squared
+summary(mlr2_5)$adj.r.squared
+```
+
+The foreward selection results in the best model being the one containing all 5 variables. Compared to the model with Lot.Area instead of log(Lot.Area), though, the adjusted R-squared between model with 5 variables and 4 variables is much smaller, suggesting including the variable "Land.Slope" into the model only very marginally improves the model.
+
+Next I use Bayesian Model Averaging to find the models with highest marginal likelihood:
+
+
+```{r}
+mbayes2 <- bas.lm(log_price ~ . -log_price, prior = "BIC", modelprior = uniform(), data = ames_q6)
+round(summary(mbayes2),4)
+img = image(mbayes2, rotate = FALSE)
+plot(mbayes2, which=3, sub.caption = "")
+plot(mbayes2, which=4, sub.caption = "")
+```
+
+Intestingly, using BMA, the model with highest likelihood is actually different from previous result: now the model without Land.Slope is the one with highest probability, not the full model. This is also shown in the inlcusion probability plot.
+
+* * *
+
+#
+
+Do you think it is better to log transform Lot.Area, in terms of assumptions for linear regression? Make graphs of the predicted values of log home price versus the true values of log home price for the regression models selected for Lot.Area and log(Lot.Area). Referencing these two plots, provide a written support that includes a quantitative justification for your answer in the first part of question 7.
+
+```{r Q7}
+# type your code for Question 7 here, and Knit
+plot(ames_q4$log_price~mlr_5$fitted.values, main = "linear regression model containing Lot.Area")
+abline(lm(ames_q4$log_price~mlr_5$fitted.values), col="red")
+
+plot(ames_q6$log_price~mlr2_5$fitted.values， main = "linear regression model containing log(Lot.Area)")
+abline(lm(ames_q6$log_price~mlr2_5$fitted.values), col="red")
+```
+
+* * *
+
+By plotting the log(price) vs its fitted values, it is clear that using log(Lot.Area) in the model makes the datapoinst more evenly distributed, therefore it is less likely a few datapoints have too much impact on the model and distort the fitting, compared to the model using Lot.Area.
+
+
+```{r}
+hist(mlr_5$residuals, prob=TRUE, main="Histogram of residuals, with Lot.Area", breaks = 20)
+lines(density(mlr_5$residuals), lwd=0.25)
+
+hist(mlr2_5$residuals, prob=TRUE, main="Histogram of residuals, with log(Lot.Area)", breaks = 20)
+lines(density(mlr2_5$residuals), lwd=0.25)
+
+qqnorm(mlr_5$residuals, main="Normal probability plot of residuals，with Lot.Area")
+qqline(mlr_5$residuals, col="red", lty="dashed")
+
+qqnorm(mlr2_5$residuals, main="Normal probability plot of residuals, with log(Lot.Area)")
+qqline(mlr2_5$residuals, col="red", lty="dashed")
+
+plot(mlr_5$residuals~mlr_5$fitted, main="Residuals vs fitted，with Lot.Area")
+abline(h=0, lty="dashed")
+
+plot(mlr_5$residuals~mlr2_5$fitted, main="Residuals vs fitted，with Lot.Area")
+abline(h=0, lty="dashed")
+
+summary(mlr_5)
+
+summary(mlr2_5)
+```
+
+From the model diagnostics and summary statistics shown above, the difference in terms of residuals is minimal between two models. However, the model with log(Lot.Area) has adjusted R-squared of 0.6032, considerably higher than the model with Lot.Area (0.5598). This further supports that the model using log(Lot.Area) is a better choice. 
+
+
+
+* * *
+###
