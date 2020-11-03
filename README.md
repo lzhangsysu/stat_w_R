@@ -1,4 +1,4 @@
-# duke_stat_w_R
+# stat_w_R
 Coursera Statistics with R specialization
 
 To view projects:
